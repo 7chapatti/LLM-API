@@ -1,27 +1,38 @@
-function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
-
-function isRetryable(error) {
-  const status = error?.status ?? error?.response?.status;
-  return error?.name === 'APIConnectionTimeoutError' || error?.code === 'ETIMEDOUT' || status === 429 || (status >= 500 && status < 600);
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function retryAfterMs(error) {
-  const value = error?.headers?.['retry-after'] ?? error?.response?.headers?.['retry-after'];
-  if (!value) return null;
-  const seconds = Number(value);
-  if (Number.isFinite(seconds)) return seconds * 1000;
-  const dateMs = Date.parse(value);
-  return Number.isNaN(dateMs) ? null : Math.max(0, dateMs - Date.now());
+function isRetryable(err) {
+  const status = err?.status ?? err?.response?.status;
+  if (err?.name === 'APIConnectionTimeoutError' || err?.code === 'ETIMEDOUT') return true;
+  if (status === 429) return true;
+  if (typeof status === 'number' && status >= 500 && status < 600) return true;
+  return false;
 }
 
-async function withRetry(operation, { maxAttempts = 3 } = {}) {
-  for (let attempt = 1; ; attempt += 1) {
-    try { return await operation(); }
-    catch (error) {
-      if (attempt >= maxAttempts || !isRetryable(error)) throw error;
-      const waitMs = retryAfterMs(error) ?? (1000 * 2 ** (attempt - 1) + Math.random() * 250);
+function retryAfterMs(err) {
+  const header = err?.headers?.['retry-after'] ?? err?.response?.headers?.['retry-after'];
+  if (!header) return null;
+  const seconds = Number(header);
+  return Number.isFinite(seconds) ? seconds * 1000 : null;
+}
+
+async function withRetry(fn, { maxAttempts = 3 } = {}) {
+  let attempt = 0;
+  while (true) {
+    attempt++;
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt >= maxAttempts || !isRetryable(err)) throw err;
+
+      const obeyed = retryAfterMs(err);
+      const waitMs = obeyed ?? (1000 * 2 ** (attempt - 1) + Math.random() * 250); // 1s, 2s, 4s + jitter
+
+      console.log(`retryable error on attempt ${attempt}, waiting ${Math.round(waitMs)}ms`);
       await sleep(waitMs);
     }
   }
 }
+
 module.exports = { withRetry, isRetryable };
