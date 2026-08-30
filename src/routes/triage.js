@@ -55,6 +55,12 @@ router.post('/triage', async (req, res) => {
     const issue = input.error.issues[0];
     return res.status(400).json({ error: `Invalid input: ${issue.path.join('.') || 'body'} - ${issue.message}` });
   }
+  if (process.env.LLM_ENABLED === 'false') {
+  return res.status(503).json({
+    error: 'AI triage is temporarily disabled',
+    fallback: { category: 'other', urgency: 'low', confidence: 0, reason: 'AI triage is temporarily unavailable.' }
+  });
+  }
   if (process.env.LLM_STUB === '1') return res.json(TriageOutput.parse(STUB_RESPONSE));
 
   const client = new OpenAI({ baseURL: process.env.LLM_BASE_URL, apiKey: process.env.LLM_API_KEY });
