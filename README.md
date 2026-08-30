@@ -9,7 +9,6 @@ Kill switch proof:
 Logging proof:
 <img width="841" height="110" alt="image" src="https://github.com/user-attachments/assets/a2e34725-300a-4ed3-bacd-45a18134aa52" />
 Bad API test key proof:
-<img width="842" height="175" alt="image" src="https://github.com/user-attachments/assets/c49c59ec-2e0b-401e-be4f-e26915e7fc88" />
 <img width="842" height="175" alt="image" src="https://github.com/user-attachments/assets/a436c377-ab99-4698-9cd6-6a49a60744e8" />
 
 
