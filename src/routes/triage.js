@@ -4,16 +4,21 @@ const { TriageInput, TriageOutput } = require('../llm/schema');
 const { loadPrompt } = require('../llm/promptLoader');
 const { extractJson } = require('../llm/parseJson');
 const { quarantine } = require('../llm/quarantine');
+const { createClient } = require('../llm/client');
+const { withRetry } = require('../llm/retry');
+const { logCall } = require('../llm/costLog');
 
-async function ask(client, systemPrompt, text) {
-  const response = await client.chat.completions.create({
+async function ask(client, systemPrompt, text, repaired) {
+  const startedAt = Date.now();
+  const response = await withRetry(() => client.chat.completions.create({
     model: process.env.LLM_MODEL,
     temperature: 0,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: JSON.stringify({ text }) }
     ]
-  });
+  }));
+  logCall({ promptVersion: PROMPT_VERSION, model: process.env.LLM_MODEL, usage: response.usage, durationMs: Date.now() - startedAt, repaired });
   return response.choices[0].message.content || '';
 }
 
