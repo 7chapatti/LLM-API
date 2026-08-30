@@ -2,10 +2,47 @@ const express = require('express');
 const OpenAI = require('openai');
 const { TriageInput, TriageOutput } = require('../llm/schema');
 const { loadPrompt } = require('../llm/promptLoader');
+const { extractJson } = require('../llm/parseJson');
+const { quarantine } = require('../llm/quarantine');
+
+async function ask(client, systemPrompt, text) {
+  const response = await client.chat.completions.create({
+    model: process.env.LLM_MODEL,
+    temperature: 0,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: JSON.stringify({ text }) }
+    ]
+  });
+  return response.choices[0].message.content || '';
+}
 
 const router = express.Router();
 const PROMPT_VERSION = 'triage-v1';
 const STUB_RESPONSE = { category: 'other', urgency: 'low', confidence: 0.4, reason: 'Stub mode response - no model was called.' };
+const systemPrompt = loadPrompt(PROMPT_VERSION);
+const client = new OpenAI({ baseURL: process.env.LLM_BASE_URL, apiKey: process.env.LLM_API_KEY });
+let rawOutput = await ask(client, systemPrompt, input.data.text);
+let checked = TriageOutput.safeParse(extractJson(rawOutput));
+let repaired = false;
+
+if (!checked.success) {
+  repaired = true;
+  const error = checked.error ? checked.error.issues.map((issue) => issue.message).join('; ') : 'No JSON object found';
+  rawOutput = await ask(
+    client,
+    `${systemPrompt}\n\nYour previous answer was rejected for this reason: ${error}\nPrevious answer: ${rawOutput}\nReturn only corrected JSON matching the schema above.`,
+    input.data.text
+  );
+  checked = TriageOutput.safeParse(extractJson(rawOutput));
+}
+
+if (!checked.success) {
+  const error = checked.error ? checked.error.issues.map((issue) => issue.message).join('; ') : 'No JSON object found';
+  quarantine({ input: input.data.text, promptVersion: PROMPT_VERSION, rawOutput, error });
+  return res.status(422).json({ error: 'Model could not produce a valid response after one repair attempt' });
+}
+return res.status(200).json(checked.data);
 
 router.post('/triage', async (req, res) => {
   const input = TriageInput.safeParse(req.body);
